@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Grapevine Cafe</title>
+<script src="https://sdk.minepi.com/pi-sdk.js"></script>
+<style>
+  :root { --bg:#faf6ee; --card:#fff; --ink:#2b2118; --muted:#8a7a68; --brand:#6b3fa0; --brand2:#f4b942; --line:#eadfce; --ok:#2e8b57; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#1d1812; --card:#2a231a; --ink:#f3ead9; --muted:#a8977f; --line:#3d3326; } }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, "Segoe UI", sans-serif; background:var(--bg); color:var(--ink); }
+  header { padding:16px; background:var(--brand); color:#fff; display:flex; justify-content:space-between; align-items:center; }
+  header h1 { margin:0; font-size:20px; }
+  header small { opacity:.85; }
+  nav { display:flex; gap:4px; padding:8px 12px; background:var(--card); border-bottom:1px solid var(--line); position:sticky; top:0; }
+  nav button { flex:1; padding:10px; border:0; background:none; color:var(--muted); font-size:15px; border-radius:8px; }
+  nav button.on { background:var(--brand); color:#fff; }
+  main { max-width:720px; margin:0 auto; padding:14px; padding-bottom:110px; }
+  .grid { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; }
+  .item { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px; text-align:center; }
+  .item .e { font-size:34px; } .item .n { font-weight:600; margin:6px 0 2px; } .item .p { color:var(--brand); font-weight:700; }
+  .btn { background:var(--brand); color:#fff; border:0; border-radius:10px; padding:10px 14px; font-size:15px; font-weight:600; }
+  .btn.ghost { background:none; color:var(--brand); border:1px solid var(--brand); }
+  .btn:disabled { opacity:.5; }
+  .qty { display:flex; align-items:center; justify-content:center; gap:10px; margin-top:8px; }
+  .qty button { width:34px; height:34px; border-radius:50%; border:1px solid var(--line); background:var(--card); color:var(--ink); font-size:18px; }
+  .bar { position:fixed; left:0; right:0; bottom:0; padding:12px 14px; background:var(--card); border-top:1px solid var(--line); display:flex; align-items:center; justify-content:space-between; gap:12px; }
+  .bar .t { font-size:18px; font-weight:700; }
+  .order { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px; margin-bottom:10px; }
+  .order .h { display:flex; justify-content:space-between; font-weight:600; }
+  .tag { font-size:12px; padding:2px 8px; border-radius:20px; background:var(--line); }
+  .tag.paid, .tag.done { background:var(--ok); color:#fff; } .tag.preparing { background:var(--brand2); color:#2b2118; }
+  .muted { color:var(--muted); font-size:13px; }
+  input { width:100%; padding:10px; border:1px solid var(--line); border-radius:8px; background:var(--card); color:var(--ink); margin:4px 0; font-size:15px; }
+  .row { display:flex; gap:6px; } .row input:first-child { width:70px; }
+  #toast { position:fixed; top:70px; left:50%; transform:translateX(-50%); background:#222; color:#fff; padding:10px 16px; border-radius:20px; display:none; z-index:9; max-width:90%; }
+  .hide { display:none; }
+</style>
+</head>
+<body>
+<header>
+  <div><h1>☕ Grapevine Cafe</h1><small id="who">Chưa đăng nhập</small></div>
+  <button class="btn ghost" id="login" style="color:#fff;border-color:#fff">Đăng nhập Pi</button>
+</header>
+<nav>
+  <button data-tab="menu" class="on">Thực đơn</button>
+  <button data-tab="mine">Đơn của tôi</button>
+  <button data-tab="admin">Quản lý quán</button>
+</nav>
+<main>
+  <section id="menu"><div class="grid" id="items"></div></section>
+  <section id="mine" class="hide"><div id="myOrders" class="muted">Đăng nhập để xem đơn.</div></section>
+  <section id="admin" class="hide">
+    <input id="token" type="password" placeholder="Mã quản lý">
+    <button class="btn" id="loadAdmin">Xem đơn hàng</button>
+    <h3>Thêm món</h3>
+    <div class="row"><input id="newEmoji" placeholder="🍜"><input id="newName" placeholder="Tên món"><input id="newPrice" type="number" step="0.01" placeholder="Giá (π)"></div>
+    <button class="btn ghost" id="addItem">Thêm món</button>
+    <div id="adminOrders" style="margin-top:14px"></div>
+  </section>
+</main>
+<div class="bar hide" id="bar">
+  <div><div class="muted">Tổng cộng</div><div class="t" id="total">0 π</div></div>
+  <button class="btn" id="pay">Thanh toán bằng Pi</button>
+</div>
+<div id="toast"></div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+let items = [], cart = {}, user = null, accessToken = null, mock = false;
+const fmt = (n) => (Math.round(n * 1e7) / 1e7) + ' π';
+const api = (p, method = 'GET', data, headers = {}) =>
+  fetch('/api' + p, { method, headers: { 'Content-Type': 'application/json', ...headers }, body: data ? JSON.stringify(data) : undefined })
+    .then(async (r) => { const j = await r.json(); if (!r.ok) throw new Error(j.error || 'Lỗi'); return j; });
+function toast(m) { const t = $('#toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(t._h); t._h = setTimeout(() => t.style.display = 'none', 3500); }
+const STATUS = { pending: 'Chờ thanh toán', paid: 'Đã thanh toán', preparing: 'Đang chuẩn bị', done: 'Hoàn thành' };
+
+// ---- Pi SDK ----
+const hasPi = typeof window.Pi !== 'undefined';
+async function init() {
+  const cfg = await api('/config'); mock = cfg.mock || !hasPi || new URLSearchParams(location.search).has('mock');
+  if (hasPi) Pi.init({ version: '2.0', sandbox: true });   // Đổi sandbox:false khi chạy Mainnet thật
+  items = await api('/items'); renderItems();
+  if (mock) $('#who').textContent = 'Chế độ thử (mock) – chưa dùng Pi thật';
+}
+async function login() {
+  try {
+    if (mock) { accessToken = 'mock'; user = { username: 'khach_thu' }; }
+    else {
+      const auth = await Pi.authenticate(['username', 'payments'], (payment) => api('/payments/incomplete', 'POST', { payment }));
+      accessToken = auth.accessToken; user = auth.user;
+    }
+    $('#who').textContent = 'Xin chào, @' + user.username; $('#login').classList.add('hide');
+    loadMine();
+  } catch (e) { toast('Đăng nhập thất bại: ' + e.message); }
+}
+
+// ---- Thực đơn & giỏ hàng ----
+function renderItems() {
+  $('#items').innerHTML = items.map((i) => `
+    <div class="item"><div class="e">${i.emoji}</div><div class="n">${i.name}</div><div class="p">${fmt(i.price)}</div>
+      <div class="qty"><button onclick="chg('${i.id}',-1)">−</button><b id="q-${i.id}">${cart[i.id] || 0}</b><button onclick="chg('${i.id}',1)">+</button></div></div>`).join('');
+  updateBar();
+}
+function chg(id, d) { cart[id] = Math.max(0, Math.min(99, (cart[id] || 0) + d)); if (!cart[id]) delete cart[id]; $('#q-' + id).textContent = cart[id] || 0; updateBar(); }
+const lines = () => Object.entries(cart).map(([id, qty]) => ({ id, qty }));
+const cartTotal = () => lines().reduce((s, l) => s + items.find((i) => i.id === l.id).price * l.qty, 0);
+function updateBar() { $('#bar').classList.toggle('hide', !lines().length); $('#total').textContent = fmt(cartTotal()); }
+
+// ---- Thanh toán ----
+async function pay() {
+  if (!user) await login(); if (!user) return;
+  const btn = $('#pay'); btn.disabled = true;
+  const l = lines(), amount = Math.round(cartTotal() * 1e7) / 1e7;
+  const callbacks = {
+    onReadyForServerApproval: (paymentId) => api('/payments/approve', 'POST', { paymentId, accessToken, lines: l }).catch((e) => toast(e.message)),
+    onReadyForServerCompletion: (paymentId, txid) => api('/payments/complete', 'POST', { paymentId, txid })
+      .then((r) => { toast('Thanh toán xong! Mã đơn ' + r.orderId); cart = {}; renderItems(); loadMine(); btn.disabled = false; }),
+    onCancel: (paymentId) => { api('/payments/cancel', 'POST', { paymentId }); toast('Đã hủy thanh toán'); btn.disabled = false; },
+    onError: (err) => { toast('Lỗi thanh toán: ' + (err.message || err)); btn.disabled = false; },
+  };
+  if (mock) {   // Giả lập đúng thứ tự callback của Pi SDK
+    const pid = 'mock-' + Date.now();
+    await api('/payments/approve', 'POST', { paymentId: pid, accessToken, lines: l });
+    setTimeout(() => callbacks.onReadyForServerCompletion(pid, 'mock-tx-' + Date.now()), 800);
+    return;
+  }
+  Pi.createPayment({ amount, memo: 'Thanh toán đơn tại Grapevine Cafe', metadata: { lines: l } }, callbacks);
+}
+
+// ---- Đơn của tôi ----
+async function loadMine() {
+  if (!accessToken) return;
+  const os = await api('/my-orders', 'POST', { accessToken });
+  $('#myOrders').innerHTML = os.length ? os.map(orderHTML).join('') : '<div class="muted">Chưa có đơn nào.</div>';
+}
+function orderHTML(o, admin) {
+  return `<div class="order"><div class="h"><span>${o.id}${admin ? ' · @' + o.username : ''}</span><span class="tag ${o.status}">${STATUS[o.status]}</span></div>
+    <div class="muted">${o.lines.map((l) => l.qty + '× ' + l.name).join(', ')}</div>
+    <div class="h" style="margin-top:6px"><span>${fmt(o.total)}</span><span class="muted">${new Date(o.createdAt).toLocaleString('vi-VN')}</span></div>
+    ${admin && o.status !== 'done' ? `<div style="margin-top:8px"><button class="btn ghost" onclick="setStatus('${o.id}','preparing')">Đang làm</button> <button class="btn" onclick="setStatus('${o.id}','done')">Xong</button></div>` : ''}</div>`;
+}
+
+// ---- Quản lý ----
+const adm = () => ({ 'x-admin-token': $('#token').value });
+async function loadAdmin() { try { const os = await api('/orders', 'GET', null, adm()); $('#adminOrders').innerHTML = os.length ? os.map((o) => orderHTML(o, true)).join('') : '<div class="muted">Chưa có đơn.</div>'; } catch (e) { toast(e.message); } }
+async function setStatus(id, status) { try { await api('/orders/' + id, 'PATCH', { status }, adm()); loadAdmin(); } catch (e) { toast(e.message); } }
+async function addItem() {
+  try { await api('/items', 'POST', { name: $('#newName').value, price: $('#newPrice').value, emoji: $('#newEmoji').value }, adm()); items = await api('/items'); renderItems(); toast('Đã thêm món'); }
+  catch (e) { toast(e.message); }
+}
+
+document.querySelectorAll('nav button').forEach((b) => b.onclick = () => {
+  document.querySelectorAll('nav button').forEach((x) => x.classList.toggle('on', x === b));
+  ['menu', 'mine', 'admin'].forEach((t) => $('#' + t).classList.toggle('hide', t !== b.dataset.tab));
+  if (b.dataset.tab === 'mine') loadMine();
+});
+$('#login').onclick = login; $('#pay').onclick = pay; $('#loadAdmin').onclick = loadAdmin; $('#addItem').onclick = addItem;
+init();
+</script>
+</body>
+</html>
