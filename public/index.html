@@ -16,7 +16,7 @@
   nav { display:flex; gap:4px; padding:8px 12px; background:var(--card); border-bottom:1px solid var(--line); position:sticky; top:0; }
   nav button { flex:1; padding:10px; border:0; background:none; color:var(--muted); font-size:15px; border-radius:8px; }
   nav button.on { background:var(--brand); color:#fff; }
-  main { max-width:720px; margin:0 auto; padding:14px; padding-bottom:110px; }
+  main { max-width:720px; margin:0 auto; padding:14px; padding-bottom:40px; }
   .grid { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; }
   .item { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px; text-align:center; }
   .item .e { font-size:34px; } .item .n { font-weight:600; margin:6px 0 2px; } .item .p { color:var(--brand); font-weight:700; }
@@ -25,7 +25,7 @@
   .btn:disabled { opacity:.5; }
   .qty { display:flex; align-items:center; justify-content:center; gap:10px; margin-top:8px; }
   .qty button { width:34px; height:34px; border-radius:50%; border:1px solid var(--line); background:var(--card); color:var(--ink); font-size:18px; }
-  .bar { position:fixed; left:0; right:0; bottom:0; padding:12px 14px; background:var(--card); border-top:1px solid var(--line); display:flex; align-items:center; justify-content:space-between; gap:12px; }
+  .bar { margin-top:16px; padding:14px; background:var(--card); border:1px solid var(--line); border-radius:14px; display:flex; align-items:center; justify-content:space-between; gap:12px; }
   .bar .t { font-size:18px; font-weight:700; }
   .order { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px; margin-bottom:10px; }
   .order .h { display:flex; justify-content:space-between; font-weight:600; }
@@ -49,7 +49,12 @@
   <button data-tab="admin">Quản lý quán</button>
 </nav>
 <main>
-  <section id="menu"><div class="grid" id="items"></div></section>
+  <section id="menu"><div class="grid" id="items"></div>
+<div class="bar hide" id="bar">
+  <div><div class="muted">Tổng cộng</div><div class="t" id="total">0 π</div></div>
+  <button class="btn" id="pay">Thanh toán bằng Pi</button>
+</div>
+</section>
   <section id="mine" class="hide"><div id="myOrders" class="muted">Đăng nhập để xem đơn.</div></section>
   <section id="admin" class="hide">
     <input id="token" type="password" placeholder="Mã quản lý">
@@ -60,10 +65,6 @@
     <div id="adminOrders" style="margin-top:14px"></div>
   </section>
 </main>
-<div class="bar hide" id="bar">
-  <div><div class="muted">Tổng cộng</div><div class="t" id="total">0 π</div></div>
-  <button class="btn" id="pay">Thanh toán bằng Pi</button>
-</div>
 <div id="toast"></div>
 
 <script>
